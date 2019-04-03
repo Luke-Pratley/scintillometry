@@ -38,27 +38,24 @@ class PolyphaseFilterBankSamples(Channelize):
                  frequency=None, sideband=None, FFT=None):
         n_tap, n = response.shape
         pad = (n_tap - 1) * n
-        assert pad % 1 == 0
         if samples_per_frame is not None:
             samples_per_frame = samples_per_frame * n + pad
+        assert pad % 2 == 0
         self.padded = PaddedTaskBase(ih, pad_start=pad//2, pad_end=pad//2,
                                      samples_per_frame=samples_per_frame)
         self.padded.task = self.ppf
         self._response = response
-        self._n_tap = n_tap
         super().__init__(self.padded, n, self.padded.samples_per_frame // n,
                          frequency=frequency, sideband=sideband, FFT=FFT)
-        if FFT is None:
-            FFT = get_fft_maker()
-        self._FFT = FFT
+        self._reshape = ((self.padded._padded_samples_per_frame // n, n) +
+                         self.ih.sample_shape)
 
     def ppf(self, data):
-        response = self._response
-        n_tap, n = response.shape
-        data = data.reshape((-1, n) + data.shape[1:])
-        result = np.empty((data.shape[0] + 1 - n_tap,) + data.shape[1:],
+        data = data.reshape(self._reshape)
+        result = np.empty((self.samples_per_frame,) + data.shape[1:],
                           data.dtype)
         # TODO: use stride tricks to do this in one go.
+        n_tap = len(self._response)
         for i in range(data.shape[0] + 1 - n_tap):
             result[i] = (data[i:i+n_tap] * self._response).sum(0)
         return result.reshape((-1,) + result.shape[2:])
@@ -67,30 +64,27 @@ class PolyphaseFilterBankSamples(Channelize):
 class PolyphaseFilterBank(PolyphaseFilterBankSamples):
     @lazyproperty
     def _ppf_fft(self):
-        n = self._response.shape[1]
-        top_shape = (self.padded._padded_samples_per_frame // n, n)
-        return self._FFT(shape=top_shape + self.ih.sample_shape,
-                         dtype=self.ih.dtype)
+        return self._FFT(shape=self._reshape, dtype=self.ih.dtype)
 
     @lazyproperty
     def _ppf_ifft(self):
         return self._ppf_fft.inverse()
 
     @lazyproperty
-    def _ft_response(self):
-        n = self._response.shape[1]
-        top_shape = (self.padded._padded_samples_per_frame // n, n)
-        long_response = np.zeros(top_shape, self.ih.dtype)
+    def _ft_response_conj(self):
+        long_response = np.zeros(self._reshape[:2], self.ih.dtype)
         long_response[:self._response.shape[0]] = self._response
         long_response.shape = (long_response.shape +
                                (1,) * len(self.ih.sample_shape))
         fft = self._FFT(shape=long_response.shape, dtype=self.ih.dtype)
-        return fft(long_response)
+        return fft(long_response).conj()
 
     def ppf(self, data):
-        data = data.reshape(self._ppf_fft.time_shape)
+        data = data.reshape(self._reshape)
         ft = self._ppf_fft(data)
-        ft *= self._ft_response.conj()
+        ft *= self._ft_response_conj
         result = self._ppf_ifft(ft)
-        result = result.reshape((-1,) + self.ih.sample_shape)
-        return result[:self.padded.samples_per_frame]
+        # Remove padding, which has turned around.
+        result = result[:result.shape[0]+1-self._response.shape[0]]
+        # Reshape as timestream (channelizer will immediately undo this...).
+        return result.reshape((-1,) + result.shape[2:])
