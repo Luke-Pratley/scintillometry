@@ -1,11 +1,17 @@
+# Licensed under the GPLv3 - see LICENSE
 import numpy as np
+from astropy.utils import lazyproperty
 
 
 from .base import PaddedTaskBase
 from .channelize import Channelize
+from .fourier import get_fft_maker
 
 
-class PolyphaseFilterBank(Channelize):
+__all__ = ['PolyphaseFilterBankSamples', 'PolyphaseFilterBank']
+
+
+class PolyphaseFilterBankSamples(Channelize):
     """Channelize a time stream using a polyphase filter bank.
 
     Parameters
@@ -42,6 +48,9 @@ class PolyphaseFilterBank(Channelize):
         self._n_tap = n_tap
         super().__init__(self.padded, n, self.padded.samples_per_frame // n,
                          frequency=frequency, sideband=sideband, FFT=FFT)
+        if FFT is None:
+            FFT = get_fft_maker()
+        self._FFT = FFT
 
     def ppf(self, data):
         response = self._response
@@ -53,3 +62,35 @@ class PolyphaseFilterBank(Channelize):
         for i in range(data.shape[0] + 1 - n_tap):
             result[i] = (data[i:i+n_tap] * self._response).sum(0)
         return result.reshape((-1,) + result.shape[2:])
+
+
+class PolyphaseFilterBank(PolyphaseFilterBankSamples):
+    @lazyproperty
+    def _ppf_fft(self):
+        n = self._response.shape[1]
+        top_shape = (self.padded._padded_samples_per_frame // n, n)
+        return self._FFT(shape=top_shape + self.ih.sample_shape,
+                         dtype=self.ih.dtype)
+
+    @lazyproperty
+    def _ppf_ifft(self):
+        return self._ppf_fft.inverse()
+
+    @lazyproperty
+    def _ft_response(self):
+        n = self._response.shape[1]
+        top_shape = (self.padded._padded_samples_per_frame // n, n)
+        long_response = np.zeros(top_shape, self.ih.dtype)
+        long_response[:self._response.shape[0]] = self._response
+        long_response.shape = (long_response.shape +
+                               (1,) * len(self.ih.sample_shape))
+        fft = self._FFT(shape=long_response.shape, dtype=self.ih.dtype)
+        return fft(long_response)
+
+    def ppf(self, data):
+        data = data.reshape(self._ppf_fft.time_shape)
+        ft = self._ppf_fft(data)
+        ft *= self._ft_response.conj()
+        result = self._ppf_ifft(ft)
+        result = result.reshape((-1,) + self.ih.sample_shape)
+        return result[:self.padded.samples_per_frame]
