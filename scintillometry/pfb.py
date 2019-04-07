@@ -62,13 +62,13 @@ class PolyphaseFilterBankSamples(Channelize):
 
 
 class PolyphaseFilterBank(PolyphaseFilterBankSamples):
-    @lazyproperty
-    def _ppf_fft(self):
-        return self._FFT(shape=self._reshape, dtype=self.ih.dtype)
-
-    @lazyproperty
-    def _ppf_ifft(self):
-        return self._ppf_fft.inverse()
+    def __init__(self, ih, response, samples_per_frame=None,
+                 frequency=None, sideband=None, FFT=None):
+        super().__init__(ih, response=response,
+                         samples_per_frame=samples_per_frame,
+                         frequency=frequency, sideband=sideband, FFT=FFT)
+        self._ppf_fft = self._FFT(shape=self._reshape, dtype=self.ih.dtype)
+        self._ppf_ifft = self._ppf_fft.inverse()
 
     @lazyproperty
     def _ft_response_conj(self):
