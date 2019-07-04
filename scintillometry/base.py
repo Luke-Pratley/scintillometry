@@ -208,7 +208,20 @@ class Base:
         return self._polarization
 
     def seek(self, offset, whence=0):
-        """Change the sample pointer position."""
+        """Change the sample pointer position.
+
+        Parameters
+        ----------
+        offset : int, `~astropy.units.Quantity`, or `~astropy.time.Time`
+            Offset to move to.  Can be an (integer) number of samples,
+            an offset in time units, or an absolute time.
+        whence : {0, 1, 2, 'start', 'current', or 'end'}, optional
+            Like regular seek, the offset is taken to be from the start if
+            ``whence=0`` (default), from the current position if 1,
+            and from the end if 2.  One can alternativey use 'start',
+            'current', or 'end' for 0, 1, or 2, respectively.  Ignored if
+            ``offset`` is a time.
+        """
         try:
             offset = operator.index(offset)
         except Exception:
