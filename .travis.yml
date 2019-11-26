@@ -65,11 +65,9 @@ env:
         # - SETUP_XVFB=True
 
         # If you want to ignore certain flake8 errors, you can list them
-        # in FLAKE8_OPT, for example
-        # E226: missing whitespace around arithmetic operator
-        # E501: line too long
-        # W504: line break after binary operator
-        - FLAKE8_OPT='--ignore=E226,E501,W504'
+        # in FLAKE8_OPT, for example:
+        # - FLAKE8_OPT='--ignore=E501'
+        - FLAKE8_OPT=''
 
 
 matrix:
@@ -80,8 +78,9 @@ matrix:
     include:
 
         # Initial tests that all the basics are covered:
-        # Default python, numpy, astropy, baseband.
+        # Do these on our oldest python, numpy, astropy, baseband.
         - stage: Initial tests
+          env: PYTHON_VERSION=3.5 NUMPY_VERSION=1.14 ASTROPY_VERSION=3.1
 
         # Do a PEP8/pyflakes test with flake8 (see setup.cfg for options)
         - stage: Initial tests
@@ -97,7 +96,6 @@ matrix:
 
         # Check everything, including coverage, with oldest supported versions.
         - env: SETUP_CMD='test --coverage'
-               PYTHON_VERSION=3.5 NUMPY_VERSION=1.16 ASTROPY_VERSION=3.1
                BASEBAND_VERSION=2.0
                USE_PINT=True
                USE_PYFFTW=True
